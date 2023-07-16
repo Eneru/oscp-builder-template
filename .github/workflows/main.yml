@@ -1,0 +1,55 @@
+name: Build OSCP report process
+
+on:
+  push:
+    branches:
+    - main
+
+env:
+  INPUT_DIRECTORY_PATH: ${{ vars.INPUT_DIRECTORY_PATH }}
+  OUTPUT_DIRECTORY_PATH: ${{ vars.OUTPUT_DIRECTORY_PATH }}
+  OUTPUT_FILENAME: ${{ vars.OUTPUT_FILENAME }}
+  ARTIFACT_NAME: ${{ vars.ARTIFACT_NAME }}
+
+jobs:
+  build-report-then-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get sources
+        id: get_sources
+        uses: actions/checkout@v3
+      - name: Prepate output destination
+        id: prepare_output_destination
+        shell: bash
+        run: |
+          echo "Creating ${OUTPUT_DIRECTORY_PATH}..."
+          mkdir -p ${OUTPUT_DIRECTORY_PATH}
+          echo "[+] Done."
+          echo "Listing files that should be converted..."
+          ls -al ${INPUT_DIRECTORY_PATH}
+          echo "[+] Done."
+          echo "Building parameters for the next part..."
+          echo "files=$(printf '"%s" ' ${INPUT_DIRECTORY_PATH}/*.md)" > $GITHUB_OUTPUT
+          echo "[+] Done."
+          echo "[!] The value of GITHUB_OUTPUT is: $GITHUB_OUTPUT"
+      - name: Build the report as PDF
+        id: build_release
+        uses: docker://pandoc/extra:3.1
+        with:
+          args: >-
+            --output=${{ env.OUTPUT_DIRECTORY_PATH }}/${{ env.OUTPUT_FILENAME }}.pdf
+            --from markdown+yaml_metadata_block+raw_html
+            --template /.pandoc/templates/eisvogel.latex
+            --table-of-contents
+            --toc-depth 6
+            --number-sections
+            --top-level-division=chapter
+            --highlight-style breezedark
+            --resource-path=.:src
+            ${{ steps.prepare_output_destination.outputs.files }}
+      - name: Release the PDF report
+        id: deploy_release
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.OUTPUT_DIRECTORY_PATH }}
